@@ -1,10 +1,11 @@
 ### Introduction
-- This project aim to reimplement Darknet architecture and YOLO (v3) object detection algorithm from scratch with pytorch and fastai library
+- This project aim to reimplement [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325) algorithm from scratch with pytorch and fastai library
 ### Todo
-- [ ] Read COCO dataset with FastAI DataBunch
-- [ ] Create Darknet Architecture with pure Pytorch and Python code
-- [ ] Write loss function with pure Pytorch and Python code
-- [ ] Train with FastAI api
+- [x] Read [Pascal VOC](http://host.robots.ox.ac.uk/pascal/VOC/) with FastAI DataBunch
+- [x] Create modified VGG architecture with pure Pytorch and Python code
+- [x] Write loss function with pure Pytorch and Python code
+- [x] Train with FastAI api
 - [ ] Inferent pictures
 - [ ] Inferent with video
 - [ ] Real time inference
+- [ ] Clean code
