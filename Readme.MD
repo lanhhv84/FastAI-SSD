@@ -7,6 +7,8 @@
 - [x] Train with FastAI api
 - [ ] Transfer weight from pretrained VGG
 - [ ] Inferent pictures
+- [ ] Non-Max Suppression
+- [ ] mAP (mean Average Precision)
 - [ ] Inferent with video
 - [ ] Real time inference
 - [ ] Clean code
