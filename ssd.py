@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class SSD(nn.Module):
 
     def __init__(self, n_classes=2):
@@ -11,81 +12,118 @@ class SSD(nn.Module):
         self.fm4_priors = 6
         self.fm5_priors = 4
         self.fm6_priors = 4
+        self.n_classes = n_classes
 
-        #
-        self.fm1 = nn.Sequential(
-            SEConv2d(3, 64, kernel_size=3, stride=1, padding=1),
-            ResBlock([
-                SEConv2d(64, 64, kernel_size=3, stride=1, padding=1)
-            ]),
-            nn.MaxPool2d(2, stride=2),
-            SEConv2d(64, 128, kernel_size=3, stride=1, padding=1),
-            ResBlock([
-                SEConv2d(128, 128, kernel_size=3, stride=1, padding=1)
-            ]),
-            nn.MaxPool2d(2, stride=2),
-
-            SEConv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            ResBlock([
-                SEConv2d(256, 256, kernel_size=3, stride=1, padding=1),
-                SEConv2d(256, 256, kernel_size=3, stride=1, padding=1)
-            ]),
-            nn.MaxPool2d(2, stride=2, ceil_mode=True),
-            SEConv2d(256, 512, kernel_size=3, stride=1, padding=1),
-            ResBlock([
-                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
-                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1)
-            ])
+    @staticmethod
+    def create_conv(*arg, **kwargs):
+        return nn.Sequential(
+            nn.Conv2d(*arg, **kwargs), 
+            nn.BatchNorm2d(arg[1]), 
+            nn.ReLU()
         )
 
+    def forward(self, data):
+        fm = data
+        conf = []
+        loc = []
+        for layer, layer_conf, layer_loc in zip(self.fms, self.fms_conf, self.fms_loc):
+            fm = layer(fm)
+            conf.append(layer_conf(fm))
+            loc.append(layer_loc(fm))
+        return loc, conf
+    
+    def test(self, inp):
+        bs = inp.shape[0]
+
+        loc_shape = [[bs, 4*self.fm1_priors, 38, 38], \
+            [bs, 4*self.fm2_priors, 19, 19], \
+                [4, 4*self.fm3_priors, 10, 10], \
+                    [4, 4*self.fm4_priors, 5, 5], \
+                        [4, 4*self.fm5_priors, 3, 3], \
+                            [4, 4*self.fm6_priors, 1, 1]
+        ]
+        conf_shape = [[bs, self.n_classes*self.fm1_priors, 38, 38], \
+            [bs, self.n_classes*self.fm2_priors, 19, 19], \
+                [bs, self.n_classes*self.fm3_priors, 10, 10], \
+                    [bs, self.n_classes*self.fm4_priors, 5, 5], \
+                        [bs, self.n_classes*self.fm5_priors, 3, 3], \
+                            [bs, self.n_classes*self.fm6_priors, 1, 1]]
+        loc, conf = self(inp)
+        
+        for l, shape in zip(loc, loc_shape):
+            assert list(l.shape) == shape, "Expect {} Got {}".format(list(l.shape), shape)
+        for c, shape in zip(conf, conf_shape):
+            assert list(c.shape) == shape, "Expect {} Got {}".format(list(c.shape), shape)
+
+
+class VGGSSD(SSD):
+
+    def __init__(self, n_classes=2):
+        super(VGGSSD, self).__init__(n_classes=n_classes)
+        #
+        self.fm1 = nn.Sequential(
+            SSD.create_conv(3, 64, 3, stride=1, padding=1),
+            SSD.create_conv(64, 64, 3, stride=1, padding=1),
+            nn.MaxPool2d(2, stride=2),
+
+            SSD.create_conv(64, 128, 3, stride=1, padding=1),
+            SSD.create_conv(128, 128, 3, stride=1, padding=1),
+            nn.MaxPool2d(2, stride=2),
+
+            SSD.create_conv(128, 256, 3, stride=1, padding=1),
+            SSD.create_conv(256, 256, 3, stride=1, padding=1),
+            SSD.create_conv(256, 256, 3, stride=1, padding=1),
+            nn.MaxPool2d(2, stride=2, ceil_mode=True),
+
+            SSD.create_conv(256, 512, 3, stride=1, padding=1),
+            SSD.create_conv(512, 512, 3, stride=1, padding=1),
+            SSD.create_conv(512, 512, 3, stride=1, padding=1)
+        )
+        ## (512, 38, 38)
         self.fm1_conf = nn.Conv2d(512, n_classes*self.fm1_priors, 3, padding=1)
         self.fm1_loc = nn.Conv2d(512, 4*self.fm1_priors, 3, padding=1)
-        ## (512, 38, 38)
+        
 
         self.fm2 = nn.Sequential(
             nn.MaxPool2d(2, stride=2),
-            ResBlock([
-                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
-                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
-                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1)
-            ]),
+            SSD.create_conv(512, 512, 3, stride=1, padding=1),
+            SSD.create_conv(512, 512, 3, stride=1, padding=1),
+            SSD.create_conv(512, 512, 3, stride=1, padding=1),
             nn.MaxPool2d(3, stride=1, padding=1),
-            SEConv2d(512, 1024, kernel_size=3, stride=1, padding=6, dilation=6),
-            ResBlock([
-                SEConv2d(1024, 1024, kernel_size=1, stride=1, padding=0)
-            ])
+            SSD.create_conv(512, 1024, 3, stride=1, padding=6, dilation=6),
+            SSD.create_conv(1024, 1024, 1, stride=1, padding=0)
         )
         self.fm2_conf = nn.Conv2d(1024, n_classes*self.fm2_priors, 3, padding=1)
         self.fm2_loc = nn.Conv2d(1024, 4*self.fm2_priors, 3, padding=1)
         ## (1024, 19, 19)
 
         self.fm3 = nn.Sequential(
-            SEConv2d(1024, 256, kernel_size=1, padding=0),
-            SEConv2d(256, 512, kernel_size=3, stride=2, padding=1),
+            SSD.create_conv(1024, 256, 1, padding=0),
+            SSD.create_conv(256, 512, 3, stride=2, padding=1),
         )
         self.fm3_conf = nn.Conv2d(512, n_classes*self.fm3_priors, 3, padding=1)
         self.fm3_loc = nn.Conv2d(512, 4*self.fm3_priors, 3, padding=1)
         ## (512, 10, 10)
 
         self.fm4 = nn.Sequential(
-            SEConv2d(512, 128, kernel_size=1, padding=0),
-            SEConv2d(128, 256, kernel_size=3, stride=2, padding=1)
+            SSD.create_conv(512, 128, 1, padding=0),
+            SSD.create_conv(128, 256, 3, stride=2, padding=1)
         )
         self.fm4_conf = nn.Conv2d(256, n_classes*self.fm4_priors, 3, padding=1)
         self.fm4_loc = nn.Conv2d(256, 4*self.fm4_priors, 3, padding=1)
         ## (256, 5, 5)
 
         self.fm5 = nn.Sequential(
-            SEConv2d(256, 128, kernel_size=1, padding=0),
-            SEConv2d(128, 256, kernel_size=3, padding=0)
+            SSD.create_conv(256, 128, 1, padding=0),
+            SSD.create_conv(128, 256, 3, padding=0)
         )
         self.fm5_conf = nn.Conv2d(256, n_classes*self.fm5_priors, 3, padding=1)
         self.fm5_loc = nn.Conv2d(256, 4*self.fm5_priors, 3, padding=1)
         ## (256, 3, 3)
 
         self.fm6 = nn.Sequential(
-            SEConv2d(256, 128, kernel_size=1, padding=0),
-            SEConv2d(128, 256, kernel_size=3, padding=0)
+            SSD.create_conv(256, 128, 1, padding=0),
+            SSD.create_conv(128, 256, 3, padding=0)
         )
         self.fm6_conf = nn.Conv2d(256, n_classes*self.fm6_priors, 3, padding=1)
         self.fm6_loc = nn.Conv2d(256, 4*self.fm6_priors, 3, padding=1)
@@ -107,55 +145,95 @@ class SSD(nn.Module):
         return loc, conf
 
 
-class SEConv2d(nn.Module):
-
-    def __init__(self, *arg, **kwargs):
-        super(SEConv2d, self).__init__()
-
-        if 'in_channels' in kwargs:
-            inc = kwargs['in_channels']
-        else:
-            inc = arg[0]
-        if 'out_channels' in kwargs:
-            ouc = kwargs['out_channels']
-        else:
-            ouc = arg[1]
-
-        self.conv = nn.Conv2d(*arg, **kwargs)
-        self.bn = nn.BatchNorm2d(ouc)
-        self.relu = nn.ReLU()
-
-        self.fc1 = nn.Linear(inc, inc)
-        self.fc2 = nn.Linear(inc, ouc)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, inp):
-        data = torch.mean(inp, dim=-1)
-        data = torch.mean(data, dim=-1)
-        # bs, channels
-        data = self.relu(self.fc1(data))
-        data = self.fc2(data)
-        data = self.sigmoid(data)
-
-        data2 = self.conv(inp)
-        data2 = self.bn(data2)
-        data2 = self.relu(data2)
-        return data2*data[..., None, None]
 
 
+class MobileNetSSD(SSD):
 
-class ResBlock(nn.Module):
+    def __init__(self, n_classes=2):
+        super(MobileNetSSD, self).__init__(n_classes=n_classes)
 
-    def __init__(self, nets):
-        super(ResBlock, self).__init__()
-        self.nets = nn.ModuleList(nets)
+        self.fm1 = nn.Sequential(
+            MobileNetSSD.conv_dw(3, 64, 1, 1),
+            MobileNetSSD.conv_dw(64, 64, 1, 1),
+            nn.MaxPool2d(2, stride=2),
 
-    def forward(self, data):
-        out = data
-        for m in self.nets:
-            out = m(out)
-        return out + data
+            MobileNetSSD.conv_dw(64, 128, 1, 1),
+            MobileNetSSD.conv_dw(128, 128, 1, 1),
+            nn.MaxPool2d(2, stride=2),
 
+            MobileNetSSD.conv_dw(128, 256, 1, 1),
+            MobileNetSSD.conv_dw(256, 256, 1, 1),
+            MobileNetSSD.conv_dw(256, 256, 1, 1),
+            nn.MaxPool2d(2, stride=2, ceil_mode=True),
 
-
+            MobileNetSSD.conv_dw(256, 512, 1, 1),
+            MobileNetSSD.conv_dw(512, 512, 1, 1),
+            MobileNetSSD.conv_dw(512, 512, 1, 1)
+        )
+        ## (512, 38, 38)
+        self.fm1_conf = nn.Conv2d(512, n_classes*self.fm1_priors, 3, padding=1)
+        self.fm1_loc = nn.Conv2d(512, 4*self.fm1_priors, 3, padding=1)
         
+
+        self.fm2 = nn.Sequential(
+            nn.MaxPool2d(2, stride=2),
+            MobileNetSSD.conv_dw(512, 512, 1, 1),
+            MobileNetSSD.conv_dw(512, 512, 1, 1),
+            MobileNetSSD.conv_dw(512, 512, 1, 1),
+            nn.MaxPool2d(3, stride=1, padding=1),
+            MobileNetSSD.conv_dw(512, 1024, 1, 6, 6),
+            MobileNetSSD.create_conv(1024, 1024, 1, stride=1, padding=0)
+        )
+        self.fm2_conf = nn.Conv2d(1024, n_classes*self.fm2_priors, 3, padding=1)
+        self.fm2_loc = nn.Conv2d(1024, 4*self.fm2_priors, 3, padding=1)
+        ## (1024, 19, 19)
+
+        self.fm3 = nn.Sequential(
+            MobileNetSSD.create_conv(1024, 256, 1, padding=0),
+            MobileNetSSD.conv_dw(256, 512, 2, 1),
+        )
+        self.fm3_conf = nn.Conv2d(512, n_classes*self.fm3_priors, 3, padding=1)
+        self.fm3_loc = nn.Conv2d(512, 4*self.fm3_priors, 3, padding=1)
+        ## (512, 10, 10)
+
+        self.fm4 = nn.Sequential(
+            MobileNetSSD.create_conv(512, 128, 1, padding=0),
+            MobileNetSSD.conv_dw(128, 256, 2, 1)
+        )
+        self.fm4_conf = nn.Conv2d(256, n_classes*self.fm4_priors, 3, padding=1)
+        self.fm4_loc = nn.Conv2d(256, 4*self.fm4_priors, 3, padding=1)
+        ## (256, 5, 5)
+
+        self.fm5 = nn.Sequential(
+            MobileNetSSD.create_conv(256, 128, 1, padding=0),
+            MobileNetSSD.conv_dw(128, 256, 1, 0)
+        )
+        self.fm5_conf = nn.Conv2d(256, n_classes*self.fm5_priors, 3, padding=1)
+        self.fm5_loc = nn.Conv2d(256, 4*self.fm5_priors, 3, padding=1)
+        ## (256, 3, 3)
+
+        self.fm6 = nn.Sequential(
+            MobileNetSSD.create_conv(256, 128, 1, padding=0),
+            MobileNetSSD.conv_dw(128, 256, 1, 0)
+        )
+        self.fm6_conf = nn.Conv2d(256, n_classes*self.fm6_priors, 3, padding=1)
+        self.fm6_loc = nn.Conv2d(256, 4*self.fm6_priors, 3, padding=1)
+        ## (256, 1, 1)
+
+        self.fms = [self.fm1, self.fm2, self.fm3, self.fm4, self.fm5, self.fm6]
+        self.fms_conf = [self.fm1_conf, self.fm2_conf, self.fm3_conf, self.fm4_conf, self.fm5_conf, self.fm6_conf]
+        self.fms_loc = [self.fm1_loc, self.fm2_loc, self.fm3_loc, self.fm4_loc, self.fm5_loc, self.fm6_loc]
+
+    @staticmethod
+    def conv_dw(inp, oup, stride, pad, dil=1):
+        return nn.Sequential(
+            nn.Conv2d(inp, inp, 3, stride, pad, dilation=dil, groups=inp, bias=False),
+            nn.BatchNorm2d(inp),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(oup),
+            nn.ReLU(inplace=True),
+        )
+
+    
