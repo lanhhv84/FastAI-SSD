@@ -14,22 +14,28 @@ class SSD(nn.Module):
 
         #
         self.fm1 = nn.Sequential(
-            SSD.create_conv(3, 64, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(64, 64, kernel_size=3, stride=1, padding=1),
+            SEConv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            ResBlock([
+                SEConv2d(64, 64, kernel_size=3, stride=1, padding=1)
+            ]),
+            nn.MaxPool2d(2, stride=2),
+            SEConv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            ResBlock([
+                SEConv2d(128, 128, kernel_size=3, stride=1, padding=1)
+            ]),
             nn.MaxPool2d(2, stride=2),
 
-            SSD.create_conv(64, 128, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(128, 128, kernel_size=3, stride=1, padding=1),
-            nn.MaxPool2d(2, stride=2),
-
-            SSD.create_conv(128, 256, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(256, 256, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(256, 256, kernel_size=3, stride=1, padding=1),
+            SEConv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            ResBlock([
+                SEConv2d(256, 256, kernel_size=3, stride=1, padding=1),
+                SEConv2d(256, 256, kernel_size=3, stride=1, padding=1)
+            ]),
             nn.MaxPool2d(2, stride=2, ceil_mode=True),
-
-            SSD.create_conv(256, 512, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(512, 512, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(512, 512, kernel_size=3, stride=1, padding=1)
+            SEConv2d(256, 512, kernel_size=3, stride=1, padding=1),
+            ResBlock([
+                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
+                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1)
+            ])
         )
 
         self.fm1_conf = nn.Conv2d(512, n_classes*self.fm1_priors, 3, padding=1)
@@ -38,44 +44,48 @@ class SSD(nn.Module):
 
         self.fm2 = nn.Sequential(
             nn.MaxPool2d(2, stride=2),
-            SSD.create_conv(512, 512, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(512, 512, kernel_size=3, stride=1, padding=1),
-            SSD.create_conv(512, 512, kernel_size=3, stride=1, padding=1),
+            ResBlock([
+                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
+                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1),
+                SEConv2d(512, 512, kernel_size=3, stride=1, padding=1)
+            ]),
             nn.MaxPool2d(3, stride=1, padding=1),
-            SSD.create_conv(512, 1024, kernel_size=3, stride=1, padding=6, dilation=6),
-            SSD.create_conv(1024, 1024, kernel_size=1, stride=1, padding=0)
+            SEConv2d(512, 1024, kernel_size=3, stride=1, padding=6, dilation=6),
+            ResBlock([
+                SEConv2d(1024, 1024, kernel_size=1, stride=1, padding=0)
+            ])
         )
         self.fm2_conf = nn.Conv2d(1024, n_classes*self.fm2_priors, 3, padding=1)
         self.fm2_loc = nn.Conv2d(1024, 4*self.fm2_priors, 3, padding=1)
         ## (1024, 19, 19)
 
         self.fm3 = nn.Sequential(
-            SSD.create_conv(1024, 256, kernel_size=1, padding=0),
-            SSD.create_conv(256, 512, kernel_size=3, stride=2, padding=1),
+            SEConv2d(1024, 256, kernel_size=1, padding=0),
+            SEConv2d(256, 512, kernel_size=3, stride=2, padding=1),
         )
         self.fm3_conf = nn.Conv2d(512, n_classes*self.fm3_priors, 3, padding=1)
         self.fm3_loc = nn.Conv2d(512, 4*self.fm3_priors, 3, padding=1)
         ## (512, 10, 10)
 
         self.fm4 = nn.Sequential(
-            SSD.create_conv(512, 128, kernel_size=1, padding=0),
-            SSD.create_conv(128, 256, kernel_size=3, stride=2, padding=1)
+            SEConv2d(512, 128, kernel_size=1, padding=0),
+            SEConv2d(128, 256, kernel_size=3, stride=2, padding=1)
         )
         self.fm4_conf = nn.Conv2d(256, n_classes*self.fm4_priors, 3, padding=1)
         self.fm4_loc = nn.Conv2d(256, 4*self.fm4_priors, 3, padding=1)
         ## (256, 5, 5)
 
         self.fm5 = nn.Sequential(
-            SSD.create_conv(256, 128, kernel_size=1, padding=0),
-            SSD.create_conv(128, 256, kernel_size=3, padding=0)
+            SEConv2d(256, 128, kernel_size=1, padding=0),
+            SEConv2d(128, 256, kernel_size=3, padding=0)
         )
         self.fm5_conf = nn.Conv2d(256, n_classes*self.fm5_priors, 3, padding=1)
         self.fm5_loc = nn.Conv2d(256, 4*self.fm5_priors, 3, padding=1)
         ## (256, 3, 3)
 
         self.fm6 = nn.Sequential(
-            SSD.create_conv(256, 128, kernel_size=1, padding=0),
-            SSD.create_conv(128, 256, kernel_size=3, padding=0)
+            SEConv2d(256, 128, kernel_size=1, padding=0),
+            SEConv2d(128, 256, kernel_size=3, padding=0)
         )
         self.fm6_conf = nn.Conv2d(256, n_classes*self.fm6_priors, 3, padding=1)
         self.fm6_loc = nn.Conv2d(256, 4*self.fm6_priors, 3, padding=1)
@@ -95,10 +105,6 @@ class SSD(nn.Module):
             conf.append(layer_conf(fm))
             loc.append(layer_loc(fm))
         return loc, conf
-
-    @staticmethod
-    def create_conv(*arg, **kwargs):
-        return SEConv2d(*arg, **kwargs)
 
 
 class SEConv2d(nn.Module):
@@ -137,6 +143,18 @@ class SEConv2d(nn.Module):
         return data2*data[..., None, None]
 
 
+
+class ResBlock(nn.Module):
+
+    def __init__(self, nets):
+        super(ResBlock, self).__init__()
+        self.nets = nn.ModuleList(nets)
+
+    def forward(self, data):
+        out = data
+        for m in self.nets:
+            out = m(out)
+        return out + data
 
 
 
