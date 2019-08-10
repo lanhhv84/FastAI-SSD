@@ -240,9 +240,7 @@ class MobileNetSSD(SSD):
     
 
 
-
 def iou_table(x, truth, bs, nboxes, maxlen, im_size, eps = 1e-3):
-    ious = torch.zeros(bs, nboxes, maxlen) # (bs, 8732, maxlen)
     pred_xA = (x[:, 0, :] - x[:, 2, :]/2).contiguous().view(bs, nboxes)[..., None].expand(bs, nboxes, maxlen)
     pred_yA = (x[:, 1, :] - x[:, 3, :]/2).contiguous().view(bs, nboxes)[..., None].expand(bs, nboxes, maxlen)
     pred_xB = (x[:, 0, :] + x[:, 2, :]/2).contiguous().view(bs, nboxes)[..., None].expand(bs, nboxes, maxlen)
@@ -285,9 +283,9 @@ def ssd_loss(out, truth_loc, truth_conf, smoothl1, cre, device, n_classes, im_si
     truth = truth_loc.permute(0, 2, 1) # (bs, 4, maxlen)
     # offset (calculate center)
     truth = (truth + 1)*(im_size/2)
-    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 1 ,:], truth[:, 0 ,:]
+    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 1 ,:], truth[:, 0 ,:] 
     truth[:, 2, :], truth[:, 3, :] = truth[:, 3, :] - truth[:, 0, :], truth[:, 2, :] - truth[:, 1 ,:]
-    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 0, :] + 0.5*truth[:, 2, :], truth[:, 1 ,:] + 0.5*truth[:, 3, :]
+    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 0, :] + 0.5*truth[:, 2, :], truth[:, 1 ,:] + 0.5*truth[:, 3, :]   # cx, cy
     
     
     truth = truth/im_size
@@ -377,10 +375,6 @@ def ssd_loss(out, truth_loc, truth_conf, smoothl1, cre, device, n_classes, im_si
     # 443 -> 4, 4, 3, 8732
     tr = truth[..., None].expand(*truth.shape, 8732).permute(0, 3, 2, 1) # 4, 8732, 3, 4
     assert list(tr.shape) == [bs, 8732, maxlen, 4]
-    
-    
-    
-    
     
     
     truth_mask = torch.zeros_like(ious).byte().view(-1, maxlen) # (bs, 8732, maxlen)
