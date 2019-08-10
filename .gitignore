@@ -2,3 +2,4 @@ WIDER/*
 voc/*
 coco_sample/*
 *.pth
+*.pyc
