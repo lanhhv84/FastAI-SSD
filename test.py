@@ -2,6 +2,6 @@ from ssd import MobileNetv2SSD
 import torch
 
 
-a = torch.zeros(3, 3, 300, 300)
+a = torch.FloatTensor(3, 3, 300, 300).uniform_(0, 1)
 net = MobileNetv2SSD(2)
 net.test(a)
