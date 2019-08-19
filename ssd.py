@@ -283,6 +283,7 @@ def iou_table(x, truth, bs, nboxes, maxlen, im_size, eps = 1e-3):
 def ssd_loss(out, truth_loc, truth_conf, smoothl1, cre, device, n_classes, im_size, iou_thres=0.6, eps = 1e-3):
     loc, conf = out
     # print(max([x.max().item() for x in loc]), min([x.min().item() for x in loc]), max([x.max().item() for x in conf]), min([x.min().item() for x in conf]))
+    assert min([x.min().item() for x in loc]) < 0.999
     assert len(loc) == 6
     assert len(conf) == 6
     assert len(loc[0].shape) == 4 
