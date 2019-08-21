@@ -278,6 +278,106 @@ def iou_table(x, truth, bs, nboxes, maxlen, im_size, eps = 1e-3):
     ious = interArea / torch.clamp(boxAArea + boxBArea - interArea, min=eps) # [bs, 8732, maxlen]
     return ious
 
+def truth_boxes(out, truth_loc, truth_conf, n_classes=None, im_size=416, thres=0.6):
+    loc, conf = out
+
+    bs = truth_loc.shape[0]
+    maxlen = truth_loc.shape[1]
+    # offset (calculate center)
+    truth = (truth_loc.permute(0, 2, 1) + 1)*(im_size/2)
+    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 1 ,:], truth[:, 0 ,:] 
+    truth[:, 2, :], truth[:, 3, :] = truth[:, 3, :] - truth[:, 0, :], truth[:, 2, :] - truth[:, 1 ,:]
+    truth[:, 0, :], truth[:, 1 ,:] = truth[:, 0, :] + 0.5*truth[:, 2, :], truth[:, 1 ,:] + 0.5*truth[:, 3, :]   # cx, cy, w, h
+
+    truth = truth/im_size
+    
+    
+    for i in range(len(loc)):
+        # assert torch.sum(torch.isnan(loc[i])) == 0, "loc is NaN"
+        loc[i] = loc[i].reshape(bs, -1, 4, loc[i].shape[-1], loc[i].shape[-1])
+        conf[i] = conf[i].reshape(bs, -1, n_classes, loc[i].shape[-1], loc[i].shape[-1])
+        
+    """
+        loc:
+            - (4, 4, 38, 38)
+            - (6, 4, 19, 19)
+            - (6, 4, 10, 10)
+            - (6, 4, 5, 5)
+            - (4, 4, 3, 3)
+            - (4, 4, 1, 1)
+            
+        conf:
+            - (4, n_classes, 38, 38)
+            - (6, n_classes, 19, 19)
+            - (6, n_classes, 10, 10)
+            - (6, n_classes, 5, 5)
+            - (4, n_classes, 3, 3)
+            - (4, n_classes, 1, 1)
+        truth_loc: (bs, maxlen, 4)
+        truth_conf: (bs, maxlen)
+    """
+    
+    
+    ratios4 = [1, 2, 0.5, 1]
+    ratios6 = [1, 2, 0.5, 3, 1/3, 1]
+    
+    ratios_map = [ ratios4, ratios6, ratios6, ratios6, ratios4, ratios4]
+    scales = [0.1, 0.2, 0.375, 0.55, 0.725, 0.9]
+    
+    pred = []
+    priors = []
+    
+    for index in range(len(loc)):
+        prior = torch.zeros_like(loc[index]) # bs, -1, 4, loc[i].shape[-1], loc[i].shape[-1]
+        # calculate prior (cx, cy)
+        for row in range(prior.shape[-1]):
+            for col in range(prior.shape[-1]):
+                prior[..., 0, row, col] = (0.5 + row) / prior.shape[-1] # Prior cx
+                prior[..., 1, row, col] = (0.5 + col) / prior.shape[-1] # prior cy
+        # assert prior.max() <= 1
+        # calculate prior (w, h)
+        ratios = ratios_map[index]
+        scale = scales[index]
+        for i in range(len(ratios)):
+            r = ratios[i]
+            if i == len(ratios) - 1:
+                scale = scale*1.5
+            w = scale*np.sqrt(r)
+            h = scale/np.sqrt(r)
+            # w
+            prior[..., i, 2, :, :]  = w/prior.shape[-1]
+            prior[..., i, 3, :, :] = h/prior.shape[-1]
+        # done prior
+        # cx
+        # assert torch.sum(torch.isnan(prior)) == 0, "prior is NaN"
+        pred_box = torch.zeros_like(loc[index])
+        pred_box[...,0,:,:] = loc[index][...,0,:,:]*prior[...,2,:,:] + prior[...,0,:,:]
+        pred_box[...,1,:,:] = loc[index][...,1,:,:]*prior[...,3,:,:] + prior[...,1,:,:]
+        pred_box[...,2,:,:] = torch.exp(loc[index][...,2,:,:])*prior[...,2,:,:]
+        pred_box[...,3,:,:] = torch.exp(loc[index][...,3,:,:])*prior[...,3,:,:]
+        priors.append(prior)
+        pred_box = pred_box.permute(0, 2, 1, 3, 4).contiguous().view(bs, 4, -1)
+        pred_box = torch.clamp(pred_box, min=0, max=1)
+        # assert torch.sum(torch.isnan(pred_box)) == 0, "Pred is NaN"
+        pred.append(pred_box)
+    
+    pred = torch.cat(pred, dim=2) # (bs, 4, 8732)
+    assert list(pred.shape) == [bs, 4, 8732]
+    
+    assert list(truth.shape) == [bs, 4, maxlen]
+    # IoU
+    ious = iou_table(pred, truth=truth, bs=bs, nboxes=pred.shape[-1], im_size=im_size, maxlen=maxlen)
+    conf = torch.cat([x.view(bs, n_classes, -1) for x in conf], dim=2) # bs, n_classes, nboxes
+    pred_boxes = torch.argmax(ious, dim=2) # bs, nboxes -> truth box index (maxlen)
+    pred_classes = torch.argmax(conf, dim=1) # bs, nboxes -> class_index
+    truth_conf # bs, maxlen -> class_index
+    truth_classes = torch.gather(truth_conf, 1, pred_boxes) # bs, nboxes -> class_index
+    correct_boxes = torch.eq(pred_classes, truth_classes).long()*(torch.max(ious, dim=2)[0] > thres).long()*(truth_classes > 0).long()
+    return torch.sum(correct_boxes)
+
+def total_boxes(pred, truth_loc, truth_conf):
+    return torch.sum(truth_conf > 0)
+
 
 
 def ssd_loss(out, truth_loc, truth_conf, smoothl1, cre, device, n_classes, im_size, iou_thres=0.6, eps = 1e-3):
