@@ -1,5 +1,5 @@
 ### Introduction
-- This project aim to reimplement [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325) algorithm from scratch with pytorch and fastai library
+- This project aim to reimplement [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325) algorithm from scratch with pytorch and fastai library for study purpose
 ### Result
 ![](res.png)
 ### Todo
